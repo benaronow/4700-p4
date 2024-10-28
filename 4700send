@@ -16,7 +16,7 @@ class Sender:
         self.remote_host = None
         self.remote_port = None
         
-        self.window_size = 2
+        self.window_size = 3
         self.rt_start = 0
         self.done = False
         self.inFlight = []
@@ -86,7 +86,7 @@ class Sender:
                 if time.time() - self.rt_start >= 1:
                     break
         if thresh == self.window_size:
-            self.window_size *= 3
+            self.window_size *= 2
         else:
             self.window_size -= 1
         self.waiting = False
