@@ -74,7 +74,7 @@ class Sender:
         thresh = 0
         while len(self.inFlight) > 0:
             data = self.recv(self.socket)
-            if self.latency >= 1: self.latency = (time.time() - self.rt_start)
+            if self.latency >= 1: self.latency = (time.time() - self.rt_start) + 0.1
             if data:
                 if (data == 'done'):
                     self.done = True
