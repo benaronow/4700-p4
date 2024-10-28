@@ -16,7 +16,8 @@ class Sender:
         self.remote_host = None
         self.remote_port = None
         
-        self.window_size = 3
+        self.latency = 1
+        self.window_size = 4
         self.rt_start = 0
         self.done = False
         self.inFlight = []
@@ -31,9 +32,10 @@ class Sender:
     def send(self, message):
         self.log("Sending message '%s'" % json.dumps(message))
         self.socket.sendto(json.dumps(message).encode("utf-8"), (self.host, self.port))
+        self.rt_start = time.time()
 
     def recv(self, socket):
-        socket.settimeout(1)
+        socket.settimeout(self.latency)
         try:
             data, addr = socket.recvfrom(65535)
         except:
@@ -67,12 +69,12 @@ class Sender:
                 self.inFlight.append(msg)
                 self.totalSent += 1
         self.waiting = True
-        self.rt_start = time.time()
             
     def recv_ack(self):
         thresh = 0
         while len(self.inFlight) > 0:
             data = self.recv(self.socket)
+            if self.latency >= 1: self.latency = (time.time() - self.rt_start)
             if data:
                 if (data == 'done'):
                     self.done = True
@@ -83,14 +85,12 @@ class Sender:
                         if msg['seq'] == data['seq']: self.inFlight.remove(msg)
                     thresh += 1
             else:
-                if time.time() - self.rt_start >= 1:
-                    break
+                break
         if thresh == self.window_size:
-            self.window_size *= 2
+            self.window_size = max(self.window_size * 2, 1)
         else:
-            self.window_size -= 1
+            self.window_size = max(self.window_size - 1, 1)
         self.waiting = False
-        self.rt_start = time.time()
 
     def run(self):
         while True:
@@ -107,7 +107,7 @@ class Sender:
                 elif (conn == sys.stdin):
                     self.send_input()
                     
-            if (time.time() - self.rt_start >= 2):
+            if (time.time() - self.rt_start >= self.latency):
                 self.send_input()
             
             # Exits if no packets are currently in flight and no data is left to send
