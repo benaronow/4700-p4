@@ -11,13 +11,20 @@ class Receiver:
 
         self.remote_host = None
         self.remote_port = None
+        
+        self.done = False
+        self.received = []
 
     def send(self, message):
         self.log("Sent message %s" % json.dumps(message))
         self.socket.sendto(json.dumps(message).encode("utf-8"), (self.remote_host, self.remote_port))
 
     def recv(self, socket):
-        data, addr = socket.recvfrom(65535)
+        socket.settimeout(1)
+        try:
+            data, addr = socket.recvfrom(65535)
+        except:
+            return None
 
         # Grab the remote host/port if we don't already have it
         if self.remote_host is None:
@@ -35,20 +42,36 @@ class Receiver:
     def log(self, message):
         sys.stderr.write(message + "\n")
         sys.stderr.flush()
+        
+    def print_data(self):
+        self.received.sort(key=lambda msg: msg['seq'])
+        for msg in self.received:
+            # Print out the data to stdout
+            print(msg["data"], end='', flush=True)
+        self.done = True
 
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
             for conn in socks:
+                recv_start = time.time()
                 msg = self.recv(conn)
 
                 if msg:
-                    # Print out the data to stdout
-                    print(msg["data"], end='', flush=True)
-
-                    # Always send back an ack
-                    self.send({ "type": "ack", "seq": msg["seq"] })
-
+                    if (msg == 'done'):
+                        if not self.done:
+                            self.print_data() 
+                        self.send('done')
+                    else:
+                        if (msg not in self.received):
+                            self.received.append(msg)
+                        
+                        # Always send back an ack
+                        self.send({ "type": "ack", "seq": msg["seq"] })
+                else:
+                    if time.time() - recv_start >= 1:
+                        print('DROP DETECTED')
+                        break
 
         return
 

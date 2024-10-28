@@ -15,6 +15,14 @@ class Sender:
 
         self.remote_host = None
         self.remote_port = None
+        
+        self.window_size = 2
+        self.rt_start = 0
+        self.done = False
+        self.inFlight = []
+        self.totalSent = 0
+        self.received = []
+        self.more = True
 
     def log(self, message):
         sys.stderr.write(message + "\n")
@@ -25,7 +33,11 @@ class Sender:
         self.socket.sendto(json.dumps(message).encode("utf-8"), (self.host, self.port))
 
     def recv(self, socket):
-        data, addr = socket.recvfrom(65535)
+        socket.settimeout(1)
+        try:
+            data, addr = socket.recvfrom(65535)
+        except:
+            return None
 
         # Grab the remote host/port if we don't already have it
         if self.remote_host is None:
@@ -39,29 +51,74 @@ class Sender:
         else:
             self.log("Received message %s" % data)
             return json.loads(data.decode("utf-8"))
+        
+    def send_input(self):
+        for msg in self.inFlight:
+            self.send(msg)
+        while len(self.inFlight) < self.window_size:
+            data = sys.stdin.read(DATA_SIZE)
+            if len(data) == 0:
+                self.more = False
+                self.waiting = True
+                break
+            else:
+                msg = { "type": "msg", "data": data, "seq": self.totalSent }
+                self.send(msg)
+                self.inFlight.append(msg)
+                self.totalSent += 1
+        self.waiting = True
+        self.rt_start = time.time()
+            
+    def recv_ack(self):
+        thresh = 0
+        while len(self.inFlight) > 0:
+            data = self.recv(self.socket)
+            if data:
+                if (data == 'done'):
+                    self.done = True
+                    self.inFlight.remove('done')
+                elif (data not in self.received):
+                    self.received.append(data)
+                    for msg in self.inFlight:
+                        if msg['seq'] == data['seq']: self.inFlight.remove(msg)
+                    thresh += 1
+            else:
+                if time.time() - self.rt_start >= 1:
+                    break
+        if thresh == self.window_size:
+            self.window_size *= 3
+        else:
+            self.window_size -= 1
+        self.waiting = False
+        self.rt_start = time.time()
 
     def run(self):
-        seq = 0
         while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
-
+            
             socks = select.select(sockets, [], [], 0.1)[0]
+            
             for conn in socks:
+                # Receives any acknowledgments that have been sent
                 if conn == self.socket:
-                    data = self.recv(conn)
-
-                    if data:
-                        self.waiting = False
-                elif conn == sys.stdin:
-                    data = sys.stdin.read(DATA_SIZE)
-                    if len(data) == 0:
-                        self.log("All done!")
-                        sys.exit(0)
-
-                    msg = { "type": "msg", "data": data, "seq": seq }
-                    self.send(msg)
+                    self.recv_ack()
+                    
+                # Sends a portion of the remaining input based on the window size
+                elif (conn == sys.stdin):
+                    self.send_input()
+                    
+            if (time.time() - self.rt_start >= 2):
+                self.send_input()
+            
+            # Exits if no packets are currently in flight and no data is left to send
+            if (len(self.inFlight) == 0) & (not self.more):
+                if (self.done):
+                    self.log("All done!")
+                    sys.exit(0)
+                else:
+                    self.send('done')
+                    self.inFlight.append('done')
                     self.waiting = True
-                    seq += 1
 
         return
 
