@@ -74,7 +74,7 @@ class Sender:
         thresh = 0
         while len(self.inFlight) > 0:
             data = self.recv(self.socket)
-            if self.latency >= 1: self.latency = (time.time() - self.rt_start) + 0.1
+            if self.latency >= 1: self.latency = (time.time() - self.rt_start)
             if data:
                 if (data == 'done'):
                     self.done = True
@@ -107,7 +107,7 @@ class Sender:
                 elif (conn == sys.stdin):
                     self.send_input()
                     
-            if (time.time() - self.rt_start >= self.latency):
+            if (time.time() - self.rt_start >= self.latency + 0.1):
                 self.send_input()
             
             # Exits if no packets are currently in flight and no data is left to send
