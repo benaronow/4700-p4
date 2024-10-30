@@ -5,7 +5,19 @@ import argparse, socket, time, json, select, struct, sys, math
 DATA_SIZE = 1375
 
 class Sender:
+    """
+    Handles sending messages to a specified host and port for a UDP-based messaging system,
+    managing acknowledgments, and implementing a sliding window protocol for flow control. 
+
+    It reads input from standard input, sends messages while maintaining a window size, 
+    and handles received acknowledgments to adjust the window size dynamically. 
+    The run method orchestrates the sending and receiving of messages, 
+    ensuring that the sender operates efficiently until all messages are sent and acknowledged.
+    """
     def __init__(self, host, port):
+        """
+        Initialize host, port, and other default variables for messaging system.
+        """
         self.host = host
         self.port = int(port)
         self.log("Sender starting up using port %s" % self.port)
@@ -26,15 +38,24 @@ class Sender:
         self.more = True
 
     def log(self, message):
+        """
+        Write the given message to standard error.
+        """
         sys.stderr.write(message + "\n")
         sys.stderr.flush()
 
     def send(self, message):
+        """
+        Send the given message to address and capture time.
+        """
         self.log("Sending message '%s'" % json.dumps(message))
         self.socket.sendto(json.dumps(message).encode("utf-8"), (self.host, self.port))
         self.rt_start = time.time()
 
     def recv(self, socket):
+        """
+        Receive from given socket and return the received json message or None if invalid.
+        """
         socket.settimeout(self.latency)
         try:
             data, addr = socket.recvfrom(65535)
@@ -55,6 +76,11 @@ class Sender:
             return json.loads(data.decode("utf-8"))
         
     def send_input(self):
+        """
+        Sends in flight messages (messages which have yet to be acknowdledged).
+
+        Uses a sliding window to control the sending rate.
+        """
         for msg in self.inFlight:
             self.send(msg)
         while len(self.inFlight) < self.window_size:
@@ -71,6 +97,12 @@ class Sender:
         self.waiting = True
             
     def recv_ack(self):
+        """
+        Receive acknowledge messages and remove from in flight messages when message
+        safely transmitted.
+
+        Updates window size given how many acknowledgements received.
+        """
         thresh = 0
         while len(self.inFlight) > 0:
             data = self.recv(self.socket)
@@ -93,6 +125,15 @@ class Sender:
         self.waiting = False
 
     def run(self):
+        """
+        Runs the Sender in UDP-style messaging system.
+         
+        - Sends messages
+        - Receives acknowledgments that have been sent,
+        - Retransmits when messages drop
+        - Exits when no packets are currently in flight and no data is left to send.
+
+        """
         while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
             
@@ -123,6 +164,9 @@ class Sender:
         return
 
 if __name__ == "__main__":
+    """
+    Gathers host and port arguments. Then, creates and runs the Sender.
+    """
     parser = argparse.ArgumentParser(description='send data')
     parser.add_argument('host', type=str, help="Remote host to connect to")
     parser.add_argument('port', type=int, help="UDP port number to connect to")

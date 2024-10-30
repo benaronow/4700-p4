@@ -3,7 +3,20 @@
 import argparse, socket, time, json, select, struct, sys, math
 
 class Receiver:
+    """
+    Handles receiving messages on a UDP socket server from a remote host.
+
+    It binds to a port, listens for incoming messages, and processes them by logging, sending acknowledgments, 
+    and printing received data.
+    
+    Handles errors, ensures communication with the correct remote host, 
+    and detects dropped messages.
+
+    """
     def __init__(self):
+        """
+        Initialize host, port, and other default variables for messaging system.
+        """
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.port = self.socket.getsockname()[1]
@@ -16,10 +29,16 @@ class Receiver:
         self.received = []
 
     def send(self, message):
+        """
+        Send given message to remote address.
+        """
         self.log("Sent message %s" % json.dumps(message))
         self.socket.sendto(json.dumps(message).encode("utf-8"), (self.remote_host, self.remote_port))
 
     def recv(self, socket):
+        """
+        Receives from the given socket and return the received json message or None if invalid.
+        """
         socket.settimeout(1)
         try:
             data, addr = socket.recvfrom(65535)
@@ -40,10 +59,16 @@ class Receiver:
             return json.loads(data.decode("utf-8"))
 
     def log(self, message):
+        """
+        Logs the given message with a new line in stderr.
+        """
         sys.stderr.write(message + "\n")
         sys.stderr.flush()
         
     def print_data(self):
+        """
+        Print data from receied messages to stdout.
+        """
         self.received.sort(key=lambda msg: msg['seq'])
         for msg in self.received:
             # Print out the data to stdout
@@ -51,6 +76,21 @@ class Receiver:
         self.done = True
 
     def run(self):
+        """
+        Runs the Receiver in UDP-style messaging system.
+       
+        - Continuously listens, with select, for incoming messages on the UDP socket.
+        - When a message is received, it processes the message by checking 
+          if it is a 'done' signal or a regular message
+            - If it is a 'done' 
+                it prints out the received data and sends a confirmation. 
+            - else
+                it appends them to the received list if not duplicates
+                and sends an acknowledgment back to the sender.
+     
+        - Detects dropped messages
+        """
+        
         while True:
             socks = select.select([self.socket], [], [])[0]
             for conn in socks:
@@ -76,6 +116,9 @@ class Receiver:
         return
 
 if __name__ == "__main__":
+    """
+    Gathers host and port arguments. Then, creates and runs the Receiver.
+    """
     parser = argparse.ArgumentParser(description='receive data')
     args = parser.parse_args()
     sender = Receiver()
